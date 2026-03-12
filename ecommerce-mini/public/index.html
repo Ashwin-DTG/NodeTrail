@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>E-Commerce Order Flow (Kafka Demo)</title>
+    <style>
+        body { 
+            font-family: 'Inter', 'Segoe UI', sans-serif; 
+            background: #f4f7f6; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            padding: 50px; 
+            color: #333;
+        }
+        .container {
+            display: flex;
+            gap: 40px;
+        }
+        .card { 
+            background: white; 
+            padding: 30px; 
+            border-radius: 12px; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.08); 
+            text-align: center; 
+            width: 350px; 
+        }
+        .illustration {
+            width: 100%;
+            height: 180px;
+            background: #eef2f5;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 60px;
+        }
+        h1 { margin: 0 0 10px 0; font-size: 24px; color: #111; }
+        p { color: #666; margin-bottom: 25px; }
+        button { 
+            background: #0066ff; 
+            color: white; 
+            border: none; 
+            padding: 14px 24px; 
+            font-size: 16px; 
+            font-weight: 600;
+            border-radius: 8px; 
+            cursor: pointer; 
+            width: 100%;
+            transition: all 0.3s ease; 
+        }
+        button:hover { 
+            background: #0052cc; 
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(0, 102, 255, 0.4);
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
+        /* Tracker Styles */
+        .tracker-card {
+            background: white; 
+            padding: 30px; 
+            border-radius: 12px; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.08); 
+            width: 350px;
+            display: none;
+        }
+        .tracker-card h2 {
+            margin-top: 0;
+            font-size: 20px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 15px;
+            margin-bottom: 25px;
+        }
+        
+        .steps { 
+            text-align: left; 
+            margin-left: 10px;
+        }
+        .step { 
+            position: relative; 
+            padding-bottom: 30px;
+            padding-left: 30px; 
+            color: #999; 
+            transition: 0.4s all ease; 
+        }
+        .step:last-child {
+            padding-bottom: 0;
+            border-left: none;
+        }
+        .step::before { 
+            content: ''; 
+            width: 16px; 
+            height: 16px; 
+            border-radius: 50%; 
+            background: #e0e0e0; 
+            position: absolute; 
+            left: -8px; 
+            top: 0px; 
+            z-index: 2;
+            transition: 0.4s all ease;
+        }
+        .step::after {
+            content: '';
+            position: absolute;
+            left: -1px;
+            top: 16px;
+            height: calc(100% - 10px);
+            width: 2px;
+            background: #e0e0e0;
+            z-index: 1;
+        }
+        .step:last-child::after { display: none; }
+        
+        /* Active State */
+        .step.active { 
+            color: #0066ff; 
+            font-weight: 600; 
+        }
+        .step.active::before { 
+            background: #0066ff; 
+            box-shadow: 0 0 0 4px rgba(0, 102, 255, 0.2); 
+        }
+        
+        /* Done State */
+        .step.done { 
+            color: #111; 
+        }
+        .step.done::before { 
+            background: #00c853; 
+        }
+        .step.done::after {
+            background: #00c853;
+        }
+        
+        .badge {
+            display: inline-block;
+            background: #f0f4ff;
+            color: #0066ff;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-bottom: 15px;
+        }
+        
+        .logs-container {
+            margin-top: 30px;
+            width: 780px;
+            background: #1e1e1e;
+            color: #00ff00;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: monospace;
+            height: 200px;
+            overflow-y: auto;
+            text-align: left;
+            display: none;
+        }
+        .log-entry { margin-bottom: 5px; border-bottom: 1px solid #333; padding-bottom: 5px; }
+        .log-entry span.topic { color: #f39c12; }
+        .log-entry span.service { color: #3498db; }
+
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <!-- Store UI -->
+        <div class="card">
+            <div class="badge">KAFKA DEMO</div>
+            <div class="illustration">💻</div>
+            <h1>MacBook Pro 16"</h1>
+            <p>$2,499.00 - In Stock</p>
+            <button id="orderBtn" onclick="placeOrder()">Place Order Now</button>
+        </div>
+
+        <!-- Real-Time Tracker UI -->
+        <div class="tracker-card" id="tracker-container">
+            <h2>Order Status <span id="order-id-display" style="color:#0066ff; float:right;"></span></h2>
+            <div class="steps" id="tracker">
+                <div class="step" id="step-OrderPlaced">🛒 Order Placed</div>
+                <div class="step" id="step-PaymentCompleted">💳 Payment Completed</div>
+                <div class="step" id="step-OrderShipped">📦 Order Shipped</div>
+                <div class="step" id="step-OutForDelivery">🚚 Out for Delivery</div>
+                <div class="step" id="step-Delivered">✅ Delivered</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Live Event Logs -->
+    <div class="logs-container" id="logs">
+        <div style="color: #888; margin-bottom: 10px;">--- Real-Time Kafka Stream ---</div>
+    </div>
+
+    <script>
+        let currentOrderId = null;
+        const stepsOrder = [
+            'OrderPlaced', 
+            'PaymentCompleted', 
+            'OrderShipped', 
+            'OutForDelivery', 
+            'Delivered'
+        ];
+
+        function addLog(message) {
+            const logsDiv = document.getElementById('logs');
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.innerHTML = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logsDiv.appendChild(entry);
+            logsDiv.scrollTop = logsDiv.scrollHeight;
+        }
+
+        async function placeOrder() {
+            const btn = document.getElementById('orderBtn');
+            btn.disabled = true;
+            btn.innerText = "Processing...";
+
+            // Reset UI for new order
+            document.getElementById('tracker-container').style.display = 'block';
+            document.getElementById('logs').style.display = 'block';
+            
+            document.querySelectorAll('.step').forEach(el => {
+                el.classList.remove('active', 'done');
+            });
+
+            // Call APIs
+            try {
+                const res = await fetch('/api/orders', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId: 45, productId: 101, quantity: 1 })
+                });
+
+                const data = await res.json();
+                currentOrderId = data.orderId;
+                document.getElementById('order-id-display').innerText = "#" + currentOrderId;
+                addLog(`<span class="service">Frontend</span> generated HTTP POST request for Order ${currentOrderId}`);
+                
+            } catch (err) {
+                console.error(err);
+                btn.disabled = false;
+                btn.innerText = "Place Order Now";
+                alert("Failed to connect to API");
+            }
+        }
+
+        // Establish real-time SSE connection to listen to Kafka
+        const eventSource = new EventSource('/api/stream');
+        
+        eventSource.onopen = () => {
+             console.log("SSE Connected");
+        }
+
+        eventSource.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            
+            // Format log nicely
+            let source = "Unknown";
+            if(data.event === 'OrderPlaced') source = "API/Producer";
+            if(data.event === 'PaymentCompleted') source = "PaymentService";
+            if(['OrderShipped', 'OutForDelivery', 'Delivered'].includes(data.event)) source = "ShippingService";
+            
+            addLog(`<span class="topic">[order-events]</span> <span class="service">${source}</span> published Event: <b>${data.event}</b> (Order: ${data.orderId})`);
+
+            // Only update tracker for the current visible order
+            if (data.orderId === currentOrderId) {
+                const currentStepIndex = stepsOrder.indexOf(data.event);
+                
+                if (currentStepIndex !== -1) {
+                    stepsOrder.forEach((stepName, index) => {
+                        const stepEl = document.getElementById('step-' + stepName);
+                        if (!stepEl) return;
+                        
+                        if (index < currentStepIndex) {
+                            stepEl.classList.remove('active');
+                            stepEl.classList.add('done');
+                        } else if (index === currentStepIndex) {
+                            stepEl.classList.add('active');
+                            stepEl.classList.remove('done');
+                        } else {
+                            stepEl.classList.remove('active', 'done');
+                        }
+                    });
+
+                    if (data.event === 'Delivered') {
+                        document.getElementById('step-Delivered').classList.remove('active');
+                        document.getElementById('step-Delivered').classList.add('done');
+                        
+                        const btn = document.getElementById('orderBtn');
+                        btn.disabled = false;
+                        btn.innerText = "Place Another Order";
+                    }
+                }
+            }
+        };
+
+        eventSource.onerror = function(err) {
+            console.error("SSE Error:", err);
+            // Ignore connection drops to keep UI clean, it will reconnect automatically
+        };
+    </script>
+</body>
+</html>

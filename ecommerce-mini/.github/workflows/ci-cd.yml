@@ -1,4 +1,4 @@
-name: Node.js Kafka Microservices CI
+name: Node.js Kafka Microservices CI/CD
 
 on:
   push:
@@ -7,13 +7,15 @@ on:
     branches: [main]
 
 jobs:
-  kafka-test:
+  kafka-end-to-end:
     runs-on: ubuntu-latest
+
     services:
       zookeeper:
         image: wurstmeister/zookeeper:3.4.6
         ports:
           - 2181:2181
+
       kafka:
         image: wurstmeister/kafka:2.13-2.7.0
         env:
@@ -35,29 +37,33 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: "20"
+          node-version: '20'
 
       - name: Install Dependencies
         run: npm install
 
       - name: Start Consumers in Background
         run: |
-          node producer-consumer.js & # assuming your combined producer+consumers file
-          sleep 5 # give consumers time to connect
+          # Start all microservices/consumers in the background
+          node producer-consumer.js & # this file should include all 5 consumers + producer
+          sleep 5
 
-      - name: Test Producer API
+      - name: Start Express API
         run: |
-          # Simulate placing an order
-          node -e "
-            const axios = require('axios');
-            axios.post('http://localhost:3000/api/orders', { userId: 1, productId: 101, quantity: 1 })
-              .then(res => console.log('Order Placed:', res.data))
-              .catch(err => console.error(err));
-          "
+          node api-server.js & # your Express API serving /api/orders & SSE
+          sleep 5
 
-      - name: Wait for Events to Flow
-        run: sleep 10 # let Kafka events propagate
+      - name: Send Test Order
+        run: |
+          node -e "
+          const axios = require('axios');
+          axios.post('http://localhost:3000/api/orders', { userId: 1, productId: 101, quantity: 1 })
+            .then(res => console.log('✅ Test Order Placed:', res.data))
+            .catch(err => console.error('❌ Test Order Failed', err));
+          "
+          
+      - name: Wait for Kafka Events to Process
+        run: sleep 10
 
       - name: Show Logs
-        run: |
-          echo "✅ Kafka microservices simulation completed. Check workflow logs for events."
+        run: echo "✅ Kafka microservices test finished. Check workflow logs for event flow."

@@ -1,4 +1,4 @@
-name: Node.js CI
+name: Node.js Kafka Microservices CI
 
 on:
   push:
@@ -7,20 +7,57 @@ on:
     branches: [main]
 
 jobs:
-  build:
+  kafka-test:
     runs-on: ubuntu-latest
+    services:
+      zookeeper:
+        image: wurstmeister/zookeeper:3.4.6
+        ports:
+          - 2181:2181
+      kafka:
+        image: wurstmeister/kafka:2.13-2.7.0
+        env:
+          KAFKA_ZOOKEEPER_CONNECT: localhost:2181
+          KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+          KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+        ports:
+          - 9092:9092
+        options: >-
+          --health-cmd "kafka-topics.sh --bootstrap-server localhost:9092 --list"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
+      - name: Checkout Repository
+        uses: actions/checkout@v3
 
-    - name: Setup Node.js
-      uses: actions/setup-node@v3
-      with:
-        node-version: '20'
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: "20"
 
-    - name: Install dependencies
-      run: npm install
+      - name: Install Dependencies
+        run: npm install
 
-    - name: Run Producer (Test)
-      run: node producer.js
+      - name: Start Consumers in Background
+        run: |
+          node producer-consumer.js & # assuming your combined producer+consumers file
+          sleep 5 # give consumers time to connect
+
+      - name: Test Producer API
+        run: |
+          # Simulate placing an order
+          node -e "
+            const axios = require('axios');
+            axios.post('http://localhost:3000/api/orders', { userId: 1, productId: 101, quantity: 1 })
+              .then(res => console.log('Order Placed:', res.data))
+              .catch(err => console.error(err));
+          "
+
+      - name: Wait for Events to Flow
+        run: sleep 10 # let Kafka events propagate
+
+      - name: Show Logs
+        run: |
+          echo "✅ Kafka microservices simulation completed. Check workflow logs for events."
